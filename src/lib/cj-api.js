@@ -120,7 +120,7 @@ export async function searchProducts({ keyword = '', page = 1, size = 20, catego
     if (categoryId) params.set('categoryId', categoryId);
     params.set('countryCode', countryCode);
 
-    return cjFetch(`/product/list?${params.toString()}`);
+    return cjFetch(`/product/listV2?${params.toString()}`);
 }
 
 export async function getProductDetails(productId) {
