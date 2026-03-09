@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import ProductCard from '@/components/ProductCard';
 import LoadingSpinner from '@/components/LoadingSpinner';
 
-export default function ProductsPage() {
+function ProductsPageInner() {
     const searchParams = useSearchParams();
-    const router = useRouter();
+
 
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -165,5 +165,13 @@ export default function ProductsPage() {
                 )}
             </section>
         </>
+    );
+}
+
+export default function ProductsPage() {
+    return (
+        <Suspense fallback={<LoadingSpinner text="Loading..." />}>
+            <ProductsPageInner />
+        </Suspense>
     );
 }
