@@ -1,66 +1,118 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+'use client';
 
-export default function Home() {
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import ProductCard from '@/components/ProductCard';
+import LoadingSpinner from '@/components/LoadingSpinner';
+
+export default function HomePage() {
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  async function fetchProducts(keyword = '') {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/cj/products?keyword=${encodeURIComponent(keyword)}&size=12`);
+      const data = await res.json();
+      setProducts(data.data?.list || data.data || []);
+    } catch (err) {
+      console.error('Failed to fetch products:', err);
+      setProducts([]);
+    }
+    setLoading(false);
+  }
+
+  function handleSearch(e) {
+    e.preventDefault();
+    fetchProducts(searchQuery);
+  }
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.js file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <>
+      {/* Hero Section */}
+      <section className="hero">
+        <div className="hero-content">
+          <div className="hero-badge">🇺🇸 Free Shipping to USA</div>
+          <h1>
+            Discover <span className="gradient-text">Premium Products</span> at Unbeatable Prices
+          </h1>
+          <p className="hero-subtitle">
+            Curated trending products shipped directly to your door. Quality guaranteed.
           </p>
+
+          <div className="search-container">
+            <form className="search-bar" onSubmit={handleSearch}>
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search for products..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                id="hero-search"
+              />
+              <button type="submit" className="search-btn">
+                Search
+              </button>
+            </form>
+          </div>
         </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </section>
+
+      {/* Features */}
+      <section className="section">
+        <div className="features-grid">
+          <div className="feature-card">
+            <div className="feature-icon">🚀</div>
+            <h3>Fast Shipping</h3>
+            <p>7–15 day delivery to anywhere in the USA with full tracking.</p>
+          </div>
+          <div className="feature-card">
+            <div className="feature-icon">🛡️</div>
+            <h3>Quality Assured</h3>
+            <p>Every product is inspected before shipment for premium quality.</p>
+          </div>
+          <div className="feature-card">
+            <div className="feature-icon">💰</div>
+            <h3>Best Prices</h3>
+            <p>Direct from manufacturers — no middleman markups.</p>
+          </div>
+          <div className="feature-card">
+            <div className="feature-icon">📦</div>
+            <h3>Easy Returns</h3>
+            <p>30-day hassle-free return policy on all orders.</p>
+          </div>
         </div>
-      </main>
-    </div>
+      </section>
+
+      {/* Trending Products */}
+      <section className="section">
+        <div className="section-header">
+          <h2 className="section-title">Trending Products</h2>
+          <Link href="/products" className="section-link">View All →</Link>
+        </div>
+
+        {loading ? (
+          <LoadingSpinner text="Loading products..." />
+        ) : products.length > 0 ? (
+          <div className="product-grid">
+            {products.map((product) => (
+              <ProductCard key={product.pid} product={product} />
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <div className="empty-state-icon">📦</div>
+            <h2>No products found</h2>
+            <p>Try a different search term or browse all products.</p>
+            <Link href="/products" className="btn btn-primary">Browse All</Link>
+          </div>
+        )}
+      </section>
+    </>
   );
 }
