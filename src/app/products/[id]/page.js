@@ -27,7 +27,7 @@ export default function ProductDetailPage() {
     async function fetchProduct() {
         setLoading(true);
         try {
-            const res = await fetch(`/api/cj/products/${id}`);
+            const res = await fetch(`/api/products/${id}`);
             const data = await res.json();
             const prod = data.data || data;
             setProduct(prod);

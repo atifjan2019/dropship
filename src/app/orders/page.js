@@ -15,7 +15,7 @@ export default function OrdersPage() {
     async function fetchOrders() {
         setLoading(true);
         try {
-            const res = await fetch('/api/cj/orders?size=50');
+            const res = await fetch('/api/orders?size=50');
             const data = await res.json();
             setOrders(data.data?.list || data.data || []);
         } catch (err) {

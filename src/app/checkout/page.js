@@ -52,25 +52,33 @@ export default function CheckoutPage() {
 
         setSubmitting(true);
         try {
-            const orderData = {
-                orderNumber: `VLR-${Date.now()}`,
-                shippingCountryCode: 'US',
-                shippingProvince: form.state,
-                shippingCity: form.city,
-                shippingAddress: form.address,
-                shippingCustomerName: `${form.firstName} ${form.lastName}`,
-                shippingZip: form.zip,
-                shippingPhone: form.phone || '0000000000',
-                products: items.map(item => ({
+            const checkoutData = {
+                customer: {
+                    firstName: form.firstName,
+                    lastName: form.lastName,
+                    email: form.email,
+                    phone: form.phone,
+                    address: form.address,
+                    city: form.city,
+                    state: form.state,
+                    zip: form.zip,
+                },
+                items: items.map(item => ({
                     vid: item.vid,
                     quantity: item.quantity,
+                    productNameEn: item.productNameEn,
+                    productImage: item.productImage,
+                    sellPrice: item.sellPrice,
+                    variantName: item.variantName || '',
+                    dbProductId: item.dbProductId || null,
+                    dbVariantId: item.dbVariantId || null,
                 })),
             };
 
-            const res = await fetch('/api/cj/orders', {
+            const res = await fetch('/api/checkout', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(orderData),
+                body: JSON.stringify(checkoutData),
             });
 
             const data = await res.json();
@@ -79,7 +87,7 @@ export default function CheckoutPage() {
                 clearCart();
                 router.push('/checkout/success');
             } else {
-                setError(data.message || 'Failed to place order. Please try again.');
+                setError(data.message || data.error || 'Failed to place order. Please try again.');
             }
         } catch (err) {
             setError('Something went wrong. Please try again.');

@@ -27,9 +27,11 @@ function ProductsPageInner() {
 
     async function fetchCategories() {
         try {
-            const res = await fetch('/api/cj/categories');
+            const res = await fetch('/api/products');
             const data = await res.json();
-            setCategories(data.data || []);
+            // Extract unique categories from products
+            const cats = [...new Set((data.data?.list || []).map(p => p.categoryName).filter(Boolean))];
+            setCategories(cats.map(c => ({ categoryName: c })));
         } catch (err) {
             console.error('Failed to fetch categories:', err);
         }
@@ -39,13 +41,13 @@ function ProductsPageInner() {
         setLoading(true);
         try {
             const params = new URLSearchParams({
-                keyword,
+                search: keyword,
                 page: page.toString(),
                 size: '20',
             });
-            if (selectedCategory) params.set('categoryId', selectedCategory);
+            if (selectedCategory) params.set('category', selectedCategory);
 
-            const res = await fetch(`/api/cj/products?${params.toString()}`);
+            const res = await fetch(`/api/products?${params.toString()}`);
             const data = await res.json();
             const list = data.data?.list || data.data || [];
             setProducts(list);
@@ -97,12 +99,12 @@ function ProductsPageInner() {
                             All
                         </button>
                         {categories.slice(0, 12).map((cat, idx) => {
-                            const catId = cat.categoryId || cat.id || `cat-${idx}`;
+                            const catName = cat.categoryName || cat.name || `Category ${idx + 1}`;
                             return (
                                 <button
-                                    key={catId}
-                                    className={`category-pill ${selectedCategory === catId ? 'active' : ''}`}
-                                    onClick={() => { setSelectedCategory(catId); setPage(1); }}
+                                    key={catName}
+                                    className={`category-pill ${selectedCategory === catName ? 'active' : ''}`}
+                                    onClick={() => { setSelectedCategory(catName); setPage(1); }}
                                 >
                                     {cat.categoryName || cat.name || `Category ${idx + 1}`}
                                 </button>

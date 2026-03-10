@@ -17,7 +17,7 @@ export default function HomePage() {
   async function fetchProducts(keyword = '') {
     setLoading(true);
     try {
-      const res = await fetch(`/api/cj/products?keyword=${encodeURIComponent(keyword)}&size=12`);
+      const res = await fetch(`/api/products?search=${encodeURIComponent(keyword)}&size=12`);
       const data = await res.json();
       setProducts(data.data?.list || data.data || []);
     } catch (err) {
