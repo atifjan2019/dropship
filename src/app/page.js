@@ -34,57 +34,59 @@ export default function HomePage() {
 
   return (
     <>
-      {/* Hero Section */}
+      {/* Hero Section — Ebbe-style with side image */}
       <section className="hero">
         <div className="hero-content">
-          <div className="hero-badge">🇺🇸 Free Shipping to USA</div>
-          <h1>
-            Discover <span className="gradient-text">Premium Products</span> at Unbeatable Prices
-          </h1>
-          <p className="hero-subtitle">
-            Curated trending products shipped directly to your door. Quality guaranteed.
-          </p>
-
-          <div className="search-container">
-            <form className="search-bar" onSubmit={handleSearch}>
-              <input
-                type="text"
-                className="search-input"
-                placeholder="Search for products..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                id="hero-search"
-              />
-              <button type="submit" className="search-btn">
-                Search
-              </button>
-            </form>
+          <div className="hero-text">
+            <div className="hero-badge">ELECTRONICS</div>
+            <h1>
+              Latest Finds<br />
+              <span className="gradient-text">in Dropshipping</span>
+            </h1>
+            <p className="hero-subtitle">
+              -20% for Desktop PC, Laptops, VR Headsets and more. Discover premium products at unbeatable prices.
+            </p>
+            <Link href="/products" className="btn btn-primary btn-lg">Check Deals</Link>
+          </div>
+          <div className="hero-image">
+            <img
+              src="https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=500&fit=crop"
+              alt="Latest dropshipping finds"
+            />
           </div>
         </div>
       </section>
 
-      {/* Features */}
-      <section className="section">
+      {/* Features Bar */}
+      <section className="features-bar">
         <div className="features-grid">
           <div className="feature-card">
-            <div className="feature-icon">🚀</div>
-            <h3>Fast Shipping</h3>
-            <p>7–15 day delivery to anywhere in the USA with full tracking.</p>
+            <div className="feature-icon">🚚</div>
+            <div>
+              <h3>Free Shipping</h3>
+              <p>From orders totalling $30</p>
+            </div>
+          </div>
+          <div className="feature-card">
+            <div className="feature-icon">🌐</div>
+            <div>
+              <h3>Variety Products</h3>
+              <p>Select from +200 items</p>
+            </div>
           </div>
           <div className="feature-card">
             <div className="feature-icon">🛡️</div>
-            <h3>Quality Assured</h3>
-            <p>Every product is inspected before shipment for premium quality.</p>
+            <div>
+              <h3>Return & Refund</h3>
+              <p>Money Back Guarantee</p>
+            </div>
           </div>
           <div className="feature-card">
-            <div className="feature-icon">💰</div>
-            <h3>Best Prices</h3>
-            <p>Direct from manufacturers — no middleman markups.</p>
-          </div>
-          <div className="feature-card">
-            <div className="feature-icon">📦</div>
-            <h3>Easy Returns</h3>
-            <p>30-day hassle-free return policy on all orders.</p>
+            <div className="feature-icon">📞</div>
+            <div>
+              <h3>Support 24/7</h3>
+              <p>Always Online Feedback</p>
+            </div>
           </div>
         </div>
       </section>
