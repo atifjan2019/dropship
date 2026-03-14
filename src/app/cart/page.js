@@ -10,7 +10,7 @@ export default function CartPage() {
         return (
             <div className="empty-state fade-in">
                 <div className="empty-state-icon">🛒</div>
-                <h2>Your cart is empty</h2>
+                <h2>Your cart iss empty</h2>
                 <p>Browse our products and add something you love!</p>
                 <Link href="/products" className="btn btn-primary">Browse Products</Link>
             </div>
