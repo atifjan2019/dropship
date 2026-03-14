@@ -1,12 +1,23 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
 import { useState } from 'react';
 
 export default function Header() {
     const { totalItems } = useCart();
     const [menuOpen, setMenuOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const router = useRouter();
+
+    function handleSearch(e) {
+        e.preventDefault();
+        if (searchQuery.trim()) {
+            router.push(`/products?keyword=${encodeURIComponent(searchQuery.trim())}`);
+            setSearchQuery('');
+        }
+    }
 
     return (
         <header className="header">
@@ -15,11 +26,11 @@ export default function Header() {
                 <div className="header-topbar-inner">
                     <div className="header-topbar-links">
                         <Link href="/">Home</Link>
-                        <Link href="/orders">Track Order</Link>
+                        <Link href="/track">Track Order</Link>
                     </div>
                     <div className="header-topbar-links">
                         <Link href="/checkout">Checkout</Link>
-                        <Link href="/admin/sync">Admin</Link>
+                        <Link href="/admin">Admin</Link>
                     </div>
                 </div>
             </div>
@@ -32,14 +43,20 @@ export default function Header() {
                         <span className="logo-text">Velora</span>
                     </Link>
 
-                    <div className="header-search">
-                        <input type="text" placeholder="Search in..." readOnly />
-                        <button aria-label="Search">
+                    <form className="header-search" onSubmit={handleSearch}>
+                        <input
+                            type="text"
+                            placeholder="Search products..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            id="header-search-input"
+                        />
+                        <button type="submit" aria-label="Search">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
                             </svg>
                         </button>
-                    </div>
+                    </form>
 
                     <div className="header-actions">
                         <Link href="/cart" className="header-action-btn" aria-label="Cart">
@@ -64,7 +81,7 @@ export default function Header() {
                         <Link href="/" className="nav-link" onClick={() => setMenuOpen(false)}>Home</Link>
                         <Link href="/products" className="nav-link" onClick={() => setMenuOpen(false)}>Shop</Link>
                         <Link href="/orders" className="nav-link" onClick={() => setMenuOpen(false)}>Orders</Link>
-                        <Link href="/admin/sync" className="nav-link" onClick={() => setMenuOpen(false)}>Dashboard</Link>
+                        <Link href="/admin/dashboard" className="nav-link" onClick={() => setMenuOpen(false)}>Dashboard</Link>
                     </nav>
                     <span className="nav-phone">
                         📞 Support: +1 (800) 555-0199

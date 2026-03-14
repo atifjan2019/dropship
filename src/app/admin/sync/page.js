@@ -1,9 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useAdminAuth } from '@/context/AdminAuthContext';
 
 export default function AdminSyncPage() {
+    const { isAuthenticated, isLoading, logout } = useAdminAuth();
+    const router = useRouter();
     const [keyword, setKeyword] = useState('');
     const [pages, setPages] = useState(1);
     const [logs, setLogs] = useState([]);
@@ -11,8 +15,12 @@ export default function AdminSyncPage() {
     const [results, setResults] = useState({});
 
     useEffect(() => {
-        fetchLogs();
-    }, []);
+        if (!isLoading && !isAuthenticated) router.push('/admin');
+    }, [isLoading, isAuthenticated, router]);
+
+    useEffect(() => {
+        if (isAuthenticated) fetchLogs();
+    }, [isAuthenticated]);
 
     async function fetchLogs() {
         try {
@@ -42,6 +50,8 @@ export default function AdminSyncPage() {
         setLoading(prev => ({ ...prev, [type]: false }));
     }
 
+    if (isLoading || !isAuthenticated) return null;
+
     return (
         <>
             <div className="page-header">
@@ -50,15 +60,17 @@ export default function AdminSyncPage() {
             </div>
 
             <div className="section" style={{ maxWidth: 800, margin: '0 auto' }}>
-                {/* Admin nav */}
-                <div style={{ display: 'flex', gap: 10, marginBottom: 24 }}>
-                    <Link href="/admin/sync" className="btn btn-primary" style={{ padding: '8px 18px', fontSize: '0.85rem' }}>
-                        ⚙️ Sync Dashboard
-                    </Link>
-                    <Link href="/admin/orders" className="btn btn-ghost" style={{ padding: '8px 18px', fontSize: '0.85rem' }}>
-                        📦 Orders Dashboard
-                    </Link>
+                {/* Admin Navigation */}
+                <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
+                    <Link href="/admin/dashboard" className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.82rem' }}>📊 Dashboard</Link>
+                    <Link href="/admin/orders" className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.82rem' }}>📦 Orders</Link>
+                    <Link href="/admin/products" className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.82rem' }}>🛍️ Products</Link>
+                    <Link href="/admin/customers" className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.82rem' }}>👥 Customers</Link>
+                    <Link href="/admin/messages" className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.82rem' }}>✉️ Messages</Link>
+                    <Link href="/admin/sync" className="btn btn-primary" style={{ padding: '8px 16px', fontSize: '0.82rem' }}>⚙️ Sync</Link>
+                    <button onClick={() => { logout(); router.push('/admin'); }} className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.82rem', marginLeft: 'auto' }}>🚪 Logout</button>
                 </div>
+
                 {/* Product Import */}
                 <div className="card" style={{ marginBottom: 24 }}>
                     <div className="card-title">📦 Import Products from CJ</div>

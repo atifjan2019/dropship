@@ -167,3 +167,16 @@ ALTER TABLE order_items
 -- Recalculate sell_price from base_cost for any existing rows
 -- (After running migration, re-sync prices from Admin → Sync Prices)
 
+-- ─── Contact Messages ───────────────────────────────────────
+CREATE TABLE IF NOT EXISTS contact_messages (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    subject TEXT,
+    message TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_contact_messages_email ON contact_messages(email);
+CREATE INDEX IF NOT EXISTS idx_contact_messages_read ON contact_messages(is_read);

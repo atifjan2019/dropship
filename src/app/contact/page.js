@@ -5,14 +5,36 @@ import { useState } from 'react';
 export default function ContactPage() {
     const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' });
     const [submitted, setSubmitted] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState('');
 
     function handleChange(e) {
         setForm({ ...form, [e.target.name]: e.target.value });
     }
 
-    function handleSubmit(e) {
+    async function handleSubmit(e) {
         e.preventDefault();
-        setSubmitted(true);
+        setError('');
+        setSubmitting(true);
+
+        try {
+            const res = await fetch('/api/contact', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(form),
+            });
+            const data = await res.json();
+
+            if (!res.ok) {
+                setError(data.error || 'Failed to send message');
+            } else {
+                setSubmitted(true);
+            }
+        } catch (err) {
+            setError('Network error. Please try again.');
+        }
+
+        setSubmitting(false);
     }
 
     return (
@@ -72,9 +94,19 @@ export default function ContactPage() {
                                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                                     We&apos;ll get back to you within 24 hours.
                                 </p>
+                                <button
+                                    onClick={() => { setSubmitted(false); setForm({ name: '', email: '', subject: '', message: '' }); }}
+                                    className="btn btn-ghost"
+                                    style={{ marginTop: 16 }}
+                                >
+                                    Send Another Message
+                                </button>
                             </div>
                         ) : (
                             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                                {error && (
+                                    <div className="alert alert-error">⚠️ {error}</div>
+                                )}
                                 <div className="form-row">
                                     <div className="form-group">
                                         <label className="form-label">Name *</label>
@@ -102,7 +134,9 @@ export default function ContactPage() {
                                         style={{ resize: 'vertical' }}
                                     />
                                 </div>
-                                <button type="submit" className="btn btn-primary btn-full">Send Message</button>
+                                <button type="submit" className="btn btn-primary btn-full" disabled={submitting}>
+                                    {submitting ? '⏳ Sending...' : 'Send Message'}
+                                </button>
                             </form>
                         )}
                     </div>

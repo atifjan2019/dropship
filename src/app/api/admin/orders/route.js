@@ -1,13 +1,19 @@
 import { supabase } from '@/lib/supabase';
 import { getTrackingUrl } from '@/lib/sync-service';
+import { verifyAdmin } from '@/lib/admin-auth';
 import { NextResponse } from 'next/server';
 
 /**
  * GET /api/admin/orders
  * Lists all orders with customer email, courier, tracking, and CJ error.
- * For admin use — no email filtering required.
+ * For admin use — protected by admin auth.
  */
 export async function GET(request) {
+    const auth = verifyAdmin(request);
+    if (!auth.authorized) {
+        return NextResponse.json({ error: auth.error }, { status: 401 });
+    }
+
     try {
         const { searchParams } = new URL(request.url);
         const page = Math.max(1, parseInt(searchParams.get('page') || '1'));

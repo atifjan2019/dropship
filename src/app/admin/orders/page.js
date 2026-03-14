@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useAdminAuth } from '@/context/AdminAuthContext';
 
 const STATUS_COLORS = {
     pending:              '#f59e0b',
@@ -11,6 +13,8 @@ const STATUS_COLORS = {
     cancelled:            '#ef4444',
     cj_submission_failed: '#ef4444',
 };
+
+const STATUSES = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
 
 function StatusBadge({ status }) {
     const color = STATUS_COLORS[status] || '#6b7280';
@@ -27,21 +31,30 @@ function StatusBadge({ status }) {
 }
 
 export default function AdminOrdersPage() {
+    const { isAuthenticated, isLoading, adminFetch, logout } = useAdminAuth();
+    const router = useRouter();
     const [orders, setOrders]     = useState([]);
     const [loading, setLoading]   = useState(true);
     const [page, setPage]         = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [total, setTotal]       = useState(0);
-    const [filter, setFilter]     = useState('active'); // all | active | delivered | failed
+    const [filter, setFilter]     = useState('active');
     const [refreshingId, setRefreshingId] = useState(null);
     const [syncing, setSyncing]   = useState(false);
     const [syncMsg, setSyncMsg]   = useState('');
+    const [editingStatusId, setEditingStatusId] = useState(null);
+
+    useEffect(() => {
+        if (!isLoading && !isAuthenticated) router.push('/admin');
+    }, [isLoading, isAuthenticated, router]);
 
     const fetchOrders = useCallback(async (p = 1) => {
+        if (!isAuthenticated) return;
         setLoading(true);
         try {
             const params = new URLSearchParams({ page: p, size: 20 });
-            const res  = await fetch(`/api/admin/orders?${params}`);
+            const res  = await adminFetch(`/api/admin/orders?${params}`);
+            if (res.status === 401) { logout(); router.push('/admin'); return; }
             const data = await res.json();
             setOrders(data.data?.list || []);
             setTotal(data.data?.total || 0);
@@ -50,11 +63,10 @@ export default function AdminOrdersPage() {
             console.error(err);
         }
         setLoading(false);
-    }, []);
+    }, [isAuthenticated, adminFetch, logout, router]);
 
     useEffect(() => { fetchOrders(page); }, [page, fetchOrders]);
 
-    // Filtered view
     const filtered = orders.filter(o => {
         if (filter === 'active')    return !['delivered', 'cancelled', 'cj_submission_failed'].includes(o.orderStatus);
         if (filter === 'delivered') return o.orderStatus === 'delivered';
@@ -85,6 +97,19 @@ export default function AdminOrdersPage() {
         setSyncing(false);
     }
 
+    async function updateOrderStatus(orderId, newStatus) {
+        try {
+            await adminFetch(`/api/admin/orders/${orderId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ status: newStatus }),
+            });
+            setEditingStatusId(null);
+            await fetchOrders(page);
+        } catch {}
+    }
+
+    if (isLoading || !isAuthenticated) return null;
+
     return (
         <>
             <div className="page-header">
@@ -93,10 +118,19 @@ export default function AdminOrdersPage() {
             </div>
 
             <div className="section" style={{ maxWidth: 1100, margin: '0 auto' }}>
+                {/* Admin Navigation */}
+                <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
+                    <Link href="/admin/dashboard" className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.82rem' }}>📊 Dashboard</Link>
+                    <Link href="/admin/orders" className="btn btn-primary" style={{ padding: '8px 16px', fontSize: '0.82rem' }}>📦 Orders</Link>
+                    <Link href="/admin/products" className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.82rem' }}>🛍️ Products</Link>
+                    <Link href="/admin/customers" className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.82rem' }}>👥 Customers</Link>
+                    <Link href="/admin/messages" className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.82rem' }}>✉️ Messages</Link>
+                    <Link href="/admin/sync" className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.82rem' }}>⚙️ Sync</Link>
+                    <button onClick={() => { logout(); router.push('/admin'); }} className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.82rem', marginLeft: 'auto' }}>🚪 Logout</button>
+                </div>
 
                 {/* Toolbar */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
-                    {/* Filter pills */}
                     <div style={{ display: 'flex', gap: 8 }}>
                         {['all', 'active', 'delivered', 'failed'].map(f => (
                             <button
@@ -180,7 +214,27 @@ export default function AdminOrdersPage() {
                                                 {o.customerEmail || '—'}
                                             </td>
                                             <td style={{ padding: '10px 12px' }}>
-                                                <StatusBadge status={o.orderStatus} />
+                                                {editingStatusId === o.orderId ? (
+                                                    <select
+                                                        defaultValue={o.orderStatus}
+                                                        onChange={e => updateOrderStatus(o.orderId, e.target.value)}
+                                                        onBlur={() => setEditingStatusId(null)}
+                                                        autoFocus
+                                                        style={{
+                                                            padding: '4px 8px', borderRadius: 'var(--radius-sm)',
+                                                            border: '1px solid var(--border)', background: 'var(--bg-primary)',
+                                                            color: 'var(--text-primary)', fontSize: '0.78rem',
+                                                        }}
+                                                    >
+                                                        {STATUSES.map(s => (
+                                                            <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+                                                        ))}
+                                                    </select>
+                                                ) : (
+                                                    <span onClick={() => setEditingStatusId(o.orderId)} style={{ cursor: 'pointer' }} title="Click to change status">
+                                                        <StatusBadge status={o.orderStatus} />
+                                                    </span>
+                                                )}
                                             </td>
                                             <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.78rem' }}>
                                                 {o.trackNumber ? (
