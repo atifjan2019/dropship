@@ -43,6 +43,7 @@ export default function AdminOrdersPage() {
     const [syncing, setSyncing]   = useState(false);
     const [syncMsg, setSyncMsg]   = useState('');
     const [editingStatusId, setEditingStatusId] = useState(null);
+    const [approvingId, setApprovingId] = useState(null);
 
     useEffect(() => {
         if (!isLoading && !isAuthenticated) router.push('/admin');
@@ -106,6 +107,24 @@ export default function AdminOrdersPage() {
             setEditingStatusId(null);
             await fetchOrders(page);
         } catch {}
+    }
+
+    async function approveOrder(orderId) {
+        if (!confirm('Approve this order and submit to CJ Dropshipping?')) return;
+        setApprovingId(orderId);
+        try {
+            const res = await fetch(`/api/orders/${orderId}/retry-cj`, { method: 'POST' });
+            const data = await res.json();
+            if (data.result) {
+                setSyncMsg(`Order approved and sent to CJ`);
+            } else {
+                setSyncMsg(`CJ error: ${data.error || 'unknown'}`);
+            }
+            await fetchOrders(page);
+        } catch (err) {
+            setSyncMsg(`Approve failed: ${err.message}`);
+        }
+        setApprovingId(null);
     }
 
     if (isLoading || !isAuthenticated) return null;
@@ -245,6 +264,21 @@ export default function AdminOrdersPage() {
                                             </td>
                                             <td style={{ padding: '10px 12px' }}>
                                                 <div style={{ display: 'flex', gap: 6 }}>
+                                                    {(o.orderStatus === 'pending' || o.orderStatus === 'cj_submission_failed') && !o.cjOrderId && (
+                                                        <button
+                                                            onClick={() => approveOrder(o.orderId)}
+                                                            disabled={approvingId === o.orderId}
+                                                            title="Approve & submit to CJ"
+                                                            style={{
+                                                                padding: '4px 10px', borderRadius: 'var(--radius-sm)',
+                                                                border: '1px solid var(--accent)', background: 'var(--accent)',
+                                                                cursor: 'pointer', fontSize: '0.72rem', color: '#fff',
+                                                                fontWeight: 600,
+                                                            }}
+                                                        >
+                                                            {approvingId === o.orderId ? 'Sending...' : 'Approve'}
+                                                        </button>
+                                                    )}
                                                     <button
                                                         onClick={() => refreshOne(o.orderId)}
                                                         disabled={refreshingId === o.orderId}
