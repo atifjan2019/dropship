@@ -51,22 +51,12 @@ export default function AdminCustomersPage() {
 
     return (
         <>
-            <div className="page-header">
-                <h1>👥 Customers</h1>
+            <div className="admin-page-header">
+                <h1>Customers</h1>
                 <p>View and manage your customer base</p>
             </div>
 
-            <div className="section" style={{ maxWidth: 1100, margin: '0 auto' }}>
-                {/* Admin Navigation */}
-                <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
-                    <Link href="/admin/dashboard" className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.82rem' }}>📊 Dashboard</Link>
-                    <Link href="/admin/orders" className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.82rem' }}>📦 Orders</Link>
-                    <Link href="/admin/products" className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.82rem' }}>🛍️ Products</Link>
-                    <Link href="/admin/customers" className="btn btn-primary" style={{ padding: '8px 16px', fontSize: '0.82rem' }}>👥 Customers</Link>
-                    <Link href="/admin/messages" className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.82rem' }}>✉️ Messages</Link>
-                    <Link href="/admin/sync" className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.82rem' }}>⚙️ Sync</Link>
-                    <button onClick={() => { logout(); router.push('/admin'); }} className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.82rem', marginLeft: 'auto' }}>🚪 Logout</button>
-                </div>
+            <div className="admin-page-body">
 
                 {/* Toolbar */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
