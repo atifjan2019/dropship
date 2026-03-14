@@ -50,6 +50,8 @@ export async function GET(request) {
             productNameEn: p.title,
             productImage: parseImageUrl(p.image_url),
             sellPrice: p.sell_price,
+            baseCost: p.base_cost,
+            warehouse: p.warehouse,
             categoryName: p.category,
             description: p.description,
             variants: (p.product_variants || []).map(v => ({
@@ -57,6 +59,7 @@ export async function GET(request) {
                 dbId: v.id,
                 variantNameEn: v.name,
                 variantImage: parseImageUrl(v.image_url),
+                baseCost: v.base_cost,
                 sellPrice: v.sell_price,
                 variantStock: v.stock,
             })),

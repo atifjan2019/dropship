@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 
 export default function AdminSyncPage() {
     const [keyword, setKeyword] = useState('');
@@ -49,6 +50,15 @@ export default function AdminSyncPage() {
             </div>
 
             <div className="section" style={{ maxWidth: 800, margin: '0 auto' }}>
+                {/* Admin nav */}
+                <div style={{ display: 'flex', gap: 10, marginBottom: 24 }}>
+                    <Link href="/admin/sync" className="btn btn-primary" style={{ padding: '8px 18px', fontSize: '0.85rem' }}>
+                        ⚙️ Sync Dashboard
+                    </Link>
+                    <Link href="/admin/orders" className="btn btn-ghost" style={{ padding: '8px 18px', fontSize: '0.85rem' }}>
+                        📦 Orders Dashboard
+                    </Link>
+                </div>
                 {/* Product Import */}
                 <div className="card" style={{ marginBottom: 24 }}>
                     <div className="card-title">📦 Import Products from CJ</div>

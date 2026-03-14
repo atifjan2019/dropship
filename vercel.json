@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/sync-tracking",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/sync/prices",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}

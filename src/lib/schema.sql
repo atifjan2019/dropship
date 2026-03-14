@@ -14,7 +14,9 @@ CREATE TABLE IF NOT EXISTS products (
     description TEXT,
     image_url TEXT,
     category TEXT,
-    sell_price DECIMAL(10,2) DEFAULT 0,
+    warehouse TEXT DEFAULT 'CN',          -- CJ warehouse country code (e.g. 'US', 'CN')
+    base_cost DECIMAL(10,2) DEFAULT 0,    -- Raw CJ sell price (our cost from CJ)
+    sell_price DECIMAL(10,2) DEFAULT 0,   -- Marked-up sell price shown to customers
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
@@ -31,7 +33,8 @@ CREATE TABLE IF NOT EXISTS product_variants (
     cj_variant_id TEXT UNIQUE NOT NULL,
     name TEXT,
     image_url TEXT,
-    sell_price DECIMAL(10,2) DEFAULT 0,
+    base_cost DECIMAL(10,2) DEFAULT 0,  -- Raw CJ variant cost
+    sell_price DECIMAL(10,2) DEFAULT 0, -- Marked-up variant price
     stock INTEGER DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
@@ -68,6 +71,10 @@ CREATE TABLE IF NOT EXISTS orders (
     shipping_country TEXT DEFAULT 'US',
     shipping_phone TEXT,
     tracking_number TEXT,
+    courier TEXT,                  -- shipping carrier name (e.g. CJPacket Ordinary)
+    tracking_updated_at TIMESTAMPTZ, -- last time tracking was polled from CJ
+    cj_logistic TEXT,              -- shipping method used (e.g. CJPacket Ordinary)
+    cj_error TEXT,                 -- last CJ submission error message
     total DECIMAL(10,2) DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
@@ -84,6 +91,7 @@ CREATE TABLE IF NOT EXISTS order_items (
     order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
     product_id UUID REFERENCES products(id),
     variant_id UUID REFERENCES product_variants(id),
+    cj_vid TEXT,               -- CJ variant ID (stored for retry submission)
     product_title TEXT,
     variant_name TEXT,
     image_url TEXT,
@@ -133,3 +141,29 @@ CREATE TRIGGER customers_updated_at
 CREATE TRIGGER orders_updated_at
     BEFORE UPDATE ON orders
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ─── Migration (run if upgrading existing DB) ────────────────
+-- Run these ALTER statements if the tables already exist.
+-- They are safe to run multiple times (IF NOT EXISTS / ADD COLUMN).
+
+ALTER TABLE products
+    ADD COLUMN IF NOT EXISTS base_cost DECIMAL(10,2) DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS warehouse TEXT DEFAULT 'CN';
+
+ALTER TABLE product_variants
+    ADD COLUMN IF NOT EXISTS base_cost DECIMAL(10,2) DEFAULT 0;
+
+CREATE INDEX IF NOT EXISTS idx_products_warehouse ON products(warehouse);
+
+ALTER TABLE orders
+    ADD COLUMN IF NOT EXISTS cj_logistic TEXT,
+    ADD COLUMN IF NOT EXISTS cj_error TEXT,
+    ADD COLUMN IF NOT EXISTS courier TEXT,
+    ADD COLUMN IF NOT EXISTS tracking_updated_at TIMESTAMPTZ;
+
+ALTER TABLE order_items
+    ADD COLUMN IF NOT EXISTS cj_vid TEXT;
+
+-- Recalculate sell_price from base_cost for any existing rows
+-- (After running migration, re-sync prices from Admin → Sync Prices)
+

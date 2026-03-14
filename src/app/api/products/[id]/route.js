@@ -46,6 +46,7 @@ export async function GET(request, { params }) {
             dbId: v.id,
             variantNameEn: v.name,
             variantImage: parseImageUrl(v.image_url),
+            baseCost: v.base_cost,
             sellPrice: v.sell_price,
             variantStock: v.stock,
         }));
@@ -58,7 +59,9 @@ export async function GET(request, { params }) {
                 dbId: product.id,
                 productNameEn: product.title,
                 productImage: parseImageUrl(product.image_url),
+                baseCost: product.base_cost,
                 sellPrice: product.sell_price,
+                warehouse: product.warehouse,
                 categoryName: product.category,
                 description: product.description,
                 variants,

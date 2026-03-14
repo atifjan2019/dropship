@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { createOrder } from '@/lib/cj-api';
+import { createOrder, getBestLogistic, COUNTRY_NAMES } from '@/lib/cj-api';
 import { NextResponse } from 'next/server';
 
 export async function POST(request) {
@@ -82,16 +82,17 @@ export async function POST(request) {
             return NextResponse.json({ error: 'Failed to create order: ' + orderError.message }, { status: 500 });
         }
 
-        // 4. Create order items
+        // 4. Create order items — store cj_vid directly for retry purposes
         const orderItems = items.map(item => ({
-            order_id: order.id,
-            product_id: item.dbProductId || null,
-            variant_id: item.dbVariantId || null,
+            order_id:      order.id,
+            product_id:    item.dbProductId || null,
+            variant_id:    item.dbVariantId || null,
+            cj_vid:        item.vid || null,          // CJ variant ID — required for retry
             product_title: item.productNameEn || '',
-            variant_name: item.variantName || '',
-            image_url: item.productImage || '',
-            quantity: item.quantity || 1,
-            unit_price: parseFloat(item.sellPrice) || 0,
+            variant_name:  item.variantName || '',
+            image_url:     item.productImage || '',
+            quantity:      item.quantity || 1,
+            unit_price:    parseFloat(item.sellPrice) || 0,
         }));
 
         await supabase.from('order_items').insert(orderItems);
@@ -99,23 +100,61 @@ export async function POST(request) {
         // 5. Submit to CJ Dropshipping
         let cjOrderId = null;
         let cjResponse = null;
+        let cjError = null;
         try {
+            // Fetch best (cheapest) shipping method for this order
+            const logisticName = await getBestLogistic(
+                items.map(item => ({ vid: item.vid, quantity: item.quantity || 1 })),
+                'CN',
+                'US'
+            );
+
+            const shippingCountryCode = 'US';
+            const shippingCountry = COUNTRY_NAMES[shippingCountryCode] || 'United States';
+
             const cjOrderData = {
+                // ─── Order identifier ─────────────────────────
                 orderNumber: orderNumber,
-                shippingCountryCode: 'US',
-                shippingProvince: customer.state,
-                shippingCity: customer.city,
-                shippingAddress: customer.address,
+
+                // ─── Shipping address (all required by CJ) ────
+                shippingCountryCode,                        // 'US'
+                shippingCountry,                            // 'United States' — REQUIRED alongside code
+                shippingProvince: customer.state,           // e.g. 'California'
+                shippingCity:     customer.city,
+                shippingAddress:  customer.address,
                 shippingCustomerName: `${customer.firstName} ${customer.lastName}`,
-                shippingZip: customer.zip,
+                shippingZip:   customer.zip,
                 shippingPhone: customer.phone || '0000000000',
+                email:         customer.email || '',
+
+                // ─── Logistics (required) ─────────────────────
+                logisticName,                               // auto-selected cheapest route
+                fromCountryCode: 'CN',                      // ship from China warehouse
+
+                // ─── Payment type ─────────────────────────────
+                // payType=3: create order only — no payment/cart flow needed
+                // (payType=2 uses CJ balance; payType=1 returns cjPayUrl for web payment)
+                payType: '3',
+
+                // ─── Products ─────────────────────────────────
                 products: items.map(item => ({
-                    vid: item.vid,
+                    vid:      item.vid,           // CJ variant ID (required)
                     quantity: item.quantity || 1,
                 })),
+
+                // NOTE: Fields deliberately omitted:
+                // - platform   → error 5027 'Platform custom not support'
+                // - remark     → causes validation issues when empty
+                // - shippingAddress2  → optional, skip unless provided
+                // - shippingCounty    → optional US county, skip
+                // - taxId, iossNumber → not needed for US orders
             };
 
+            console.log('[Checkout] Submitting to CJ:', JSON.stringify(cjOrderData));
+
             cjResponse = await createOrder(cjOrderData);
+
+            console.log('[Checkout] CJ response:', JSON.stringify(cjResponse));
 
             if (cjResponse.result || cjResponse.code === 200) {
                 cjOrderId = cjResponse.data?.orderId || cjResponse.data?.orderNum || null;
@@ -126,20 +165,31 @@ export async function POST(request) {
                     .update({
                         cj_order_id: cjOrderId ? String(cjOrderId) : null,
                         status: 'processing',
+                        cj_logistic: logisticName,
                     })
                     .eq('id', order.id);
             } else {
+                cjError = cjResponse.message || 'CJ submission failed';
+                console.error('[Checkout] CJ submission failed:', cjError);
                 // CJ order failed but local order is saved
                 await supabase
                     .from('orders')
-                    .update({ status: 'cj_submission_failed' })
+                    .update({
+                        status: 'cj_submission_failed',
+                        cj_error: cjError,
+                    })
                     .eq('id', order.id);
             }
         } catch (cjErr) {
+            cjError = cjErr.message;
+            console.error('[Checkout] CJ exception:', cjErr.message);
             // CJ submission failed — order is saved locally, can retry later
             await supabase
                 .from('orders')
-                .update({ status: 'cj_submission_failed' })
+                .update({
+                    status: 'cj_submission_failed',
+                    cj_error: cjErr.message,
+                })
                 .eq('id', order.id);
         }
 
@@ -150,10 +200,13 @@ export async function POST(request) {
                 orderId: order.id,
                 orderNumber: order.order_number,
                 cjOrderId,
+                cjError: cjError || null,
                 status: cjOrderId ? 'processing' : 'cj_submission_failed',
                 total,
             },
-            message: cjOrderId ? 'Order placed successfully' : 'Order saved locally but CJ submission failed. We will retry.',
+            message: cjOrderId
+                ? 'Order placed successfully'
+                : `Order saved locally (CJ error: ${cjError || 'unknown'}). Our team will retry fulfilment.`,
         });
     } catch (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });

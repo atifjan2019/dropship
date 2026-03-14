@@ -1,10 +1,12 @@
 /**
  * CJ → Supabase Sync Service
  * Handles importing products, updating prices/stock, and syncing tracking info.
+ * Dynamic pricing: ≤$5 → 3x | ≤$10 → 2.5x | >$10 → 2x markup on base cost.
  */
 
 import { supabase } from './supabase';
 import { searchProducts, getProductDetails, getProductVariants, getOrderDetails, getTrackingInfo } from './cj-api';
+import { calculatePrice, getMarkupRate, calculateProfit } from './pricing';
 
 /**
  * CJ sometimes returns image fields as JSON-encoded arrays like
@@ -90,6 +92,10 @@ export async function importProducts({ keyword = '', pages = 1, size = 20 } = {}
                         }
                     }
 
+                    // Apply dynamic pricing markup
+                    const rawCost = parseFloat(details.sellPrice || details.nowPrice || 0);
+                    const markedUpPrice = calculatePrice(rawCost);
+
                     // Upsert product
                     const { data: dbProduct, error: prodError } = await supabase
                         .from('products')
@@ -99,7 +105,9 @@ export async function importProducts({ keyword = '', pages = 1, size = 20 } = {}
                             description: details.description || details.productDescription || '',
                             image_url: parseImageUrl(details.productImage || details.bigImage || ''),
                             category: details.categoryName || details.threeCategoryName || details.oneCategoryName || '',
-                            sell_price: parseFloat(details.sellPrice || details.nowPrice || 0),
+                            warehouse: details.countryCode || details.warehouseCountry || 'CN',
+                            base_cost: rawCost,
+                            sell_price: markedUpPrice,
                             is_active: true,
                         }, { onConflict: 'cj_product_id' })
                         .select()
@@ -110,12 +118,13 @@ export async function importProducts({ keyword = '', pages = 1, size = 20 } = {}
                         continue;
                     }
 
-                    // Upsert variants
+                    // Upsert variants (with per-variant markup)
                     if (variants.length > 0 && dbProduct) {
                         for (const v of variants) {
                             const vid = v.vid || v.variantId;
                             if (!vid) continue;
 
+                            const variantBaseCost = parseFloat(v.sellPrice || rawCost || 0);
                             await supabase
                                 .from('product_variants')
                                 .upsert({
@@ -123,7 +132,8 @@ export async function importProducts({ keyword = '', pages = 1, size = 20 } = {}
                                     cj_variant_id: String(vid),
                                     name: v.variantNameEn || v.variantName || '',
                                     image_url: parseImageUrl(v.variantImage || ''),
-                                    sell_price: parseFloat(v.sellPrice || 0),
+                                    base_cost: variantBaseCost,
+                                    sell_price: calculatePrice(variantBaseCost),
                                     stock: parseInt(v.variantStock || v.stock || 0),
                                 }, { onConflict: 'cj_variant_id' });
                         }
@@ -204,26 +214,33 @@ export async function syncPricesAndStock() {
                 const details = detailRes.data;
                 if (!details) continue;
 
+                // Recalculate markup in case CJ base cost changed
+                const newBaseCost = parseFloat(details.sellPrice || 0);
+                const newSellPrice = calculatePrice(newBaseCost);
+
                 // Update product price
                 await supabase
                     .from('products')
                     .update({
-                        sell_price: parseFloat(details.sellPrice || 0),
+                        base_cost: newBaseCost,
+                        sell_price: newSellPrice,
                         title: details.productNameEn || undefined,
                         image_url: parseImageUrl(details.productImage) || undefined,
                     })
                     .eq('id', prod.id);
 
-                // Update variant prices/stock
+                // Update variant prices/stock with per-variant markup
                 const variants = details.variants || [];
                 for (const v of variants) {
                     const vid = v.vid || v.variantId;
                     if (!vid) continue;
 
+                    const variantBaseCost = parseFloat(v.sellPrice || newBaseCost || 0);
                     await supabase
                         .from('product_variants')
                         .update({
-                            sell_price: parseFloat(v.sellPrice || 0),
+                            base_cost: variantBaseCost,
+                            sell_price: calculatePrice(variantBaseCost),
                             stock: parseInt(v.variantStock || v.stock || 0),
                         })
                         .eq('cj_variant_id', String(vid));
@@ -259,7 +276,148 @@ export async function syncPricesAndStock() {
 // ─── Tracking Sync ───────────────────────────────────────────
 
 /**
- * Poll CJ for tracking updates on all open orders.
+ * Map a CJ status string to a local status slug.
+ */
+function mapCjStatus(cjStatus) {
+    const s = (cjStatus || '').toLowerCase();
+    if (s.includes('cancel') || s.includes('close'))        return 'cancelled';
+    if (s.includes('deliver') || s.includes('complet'))     return 'delivered';
+    if (s.includes('dispatch') || s.includes('ship') || s.includes('transit')) return 'shipped';
+    if (s.includes('process') || s.includes('paid') || s.includes('confirm')) return 'processing';
+    if (s.includes('pend'))                                 return 'pending';
+    return null; // unknown — don't overwrite
+}
+
+/**
+ * Build the best tracking URL for a known courier.
+ */
+export function getTrackingUrl(trackingNumber, courier) {
+    if (!trackingNumber) return null;
+    const tn = encodeURIComponent(trackingNumber);
+    const c  = (courier || '').toLowerCase();
+
+    if (c.includes('usps'))       return `https://tools.usps.com/go/TrackConfirmAction?tLabels=${tn}`;
+    if (c.includes('ups'))        return `https://www.ups.com/track?tracknum=${tn}`;
+    if (c.includes('fedex'))      return `https://www.fedex.com/fedextrack/?trknbr=${tn}`;
+    if (c.includes('dhl'))        return `https://www.dhl.com/en/express/tracking.html?AWB=${tn}`;
+    if (c.includes('yanwen'))     return `https://www.yanwen.com/main/mail_track.html?mailno=${tn}`;
+    if (c.includes('cjpacket') || c.includes('cj'))
+        return `https://track.cjdropshipping.com/track.html?trackno=${tn}`;
+    // Fallback — 17track covers almost everything
+    return `https://t.17track.net/en#nums=${tn}`;
+}
+
+/**
+ * Fetch CJ order details + tracking info for a single order.
+ * Returns { status, trackingNumber, courier, trackingUrl, events }
+ */
+export async function fetchCjTrackingForOrder(cjOrderId) {
+    const result = {
+        status: null,
+        trackingNumber: null,
+        courier: null,
+        trackingUrl: null,
+        events: [],
+    };
+
+    // 1. Get order status from order detail endpoint
+    try {
+        const detailRes = await getOrderDetails(cjOrderId);
+        const cjOrder = detailRes?.data;
+
+        if (cjOrder) {
+            if (cjOrder.orderStatus)  result.status         = mapCjStatus(cjOrder.orderStatus);
+            if (cjOrder.trackNumber)  result.trackingNumber  = cjOrder.trackNumber;
+            if (cjOrder.logisticName) result.courier         = cjOrder.logisticName;
+        }
+    } catch (e) {
+        // Will retry via tracking endpoint
+    }
+
+    // 2. Get live tracking events from the logistics endpoint
+    try {
+        const trackRes = await getTrackingInfo(cjOrderId);
+        const td = trackRes?.data;
+
+        if (td) {
+            if (td.trackNumber)                         result.trackingNumber = td.trackNumber;
+            if (td.logisticName || td.courierName)      result.courier        = td.logisticName || td.courierName;
+            if (Array.isArray(td.trackDetailList))      result.events         = td.trackDetailList;
+            if (Array.isArray(td.details))              result.events         = td.details;
+
+            // The last event usually indicates delivery
+            const lastEvent = result.events?.[0]?.context || '';
+            if (lastEvent.toLowerCase().includes('deliver') || lastEvent.toLowerCase().includes('delivered')) {
+                result.status = 'delivered';
+            }
+        }
+    } catch (e) {
+        // Tracking not yet available — that's ok
+    }
+
+    // Build tracking URL
+    result.trackingUrl = getTrackingUrl(result.trackingNumber, result.courier);
+
+    return result;
+}
+
+/**
+ * On-demand refresh of tracking info for a single order.
+ * Works both before and after the migration SQL has been run.
+ */
+export async function refreshOrderTracking(orderId) {
+    // Only select columns guaranteed to exist in the baseline schema
+    const { data: order, error } = await supabase
+        .from('orders')
+        .select('id, cj_order_id, order_number, status, tracking_number')
+        .eq('id', orderId)
+        .single();
+
+    if (error) throw new Error(`Order not found: ${error.message}`);
+    if (!order) throw new Error('Order not found');
+    if (!order.cj_order_id) throw new Error('No CJ order ID — order was not submitted to CJ yet');
+
+    const tracking = await fetchCjTrackingForOrder(order.cj_order_id);
+
+    // Only update fields whose values have actually changed
+    const updateData = {};
+
+    if (tracking.status && tracking.status !== order.status)
+        updateData.status = tracking.status;
+    if (tracking.trackingNumber && tracking.trackingNumber !== order.tracking_number)
+        updateData.tracking_number = tracking.trackingNumber;
+
+    // These columns only exist after migration — update them if we can,
+    // ignore the error if the column doesn't exist yet
+    if (Object.keys(updateData).length > 0 || tracking.courier) {
+        const extendedUpdate = { ...updateData };
+        if (tracking.courier) extendedUpdate.courier = tracking.courier;
+
+        // Try with extended fields first (post-migration)
+        const { error: updateErr } = await supabase
+            .from('orders')
+            .update(extendedUpdate)
+            .eq('id', orderId);
+
+        if (updateErr && updateErr.message.includes('does not exist')) {
+            // Fallback: update only baseline columns
+            if (Object.keys(updateData).length > 0) {
+                await supabase.from('orders').update(updateData).eq('id', orderId);
+            }
+        }
+    }
+
+    return {
+        ...tracking,
+        orderId:     order.id,
+        orderNumber: order.order_number,
+        changed:     Object.keys(updateData).length > 0 || !!tracking.courier,
+    };
+}
+
+/**
+ * Batch tracking sync — poll CJ for all open (non-delivered) orders.
+ * Runs on a cron schedule. Only updates rows when data has actually changed.
  */
 export async function syncTracking() {
     const { data: log } = await supabase
@@ -270,76 +428,59 @@ export async function syncTracking() {
 
     const logId = log?.id;
     let updated = 0;
+    let checked = 0;
     const errors = [];
 
     try {
-        // Get orders that need tracking updates
+        // Only fetch orders that still need tracking (exclude delivered & cancelled)
         const { data: orders } = await supabase
             .from('orders')
-            .select('id, cj_order_id, order_number, status')
-            .not('status', 'in', '("delivered","cancelled")')
-            .not('cj_order_id', 'is', null);
+            .select('id, cj_order_id, order_number, status, tracking_number, courier')
+            .not('status', 'in', '("delivered","cancelled","cj_submission_failed")')
+            .not('cj_order_id', 'is', null)
+            .order('created_at', { ascending: true }); // oldest first
 
         if (!orders || orders.length === 0) {
-            if (logId) {
-                await supabase.from('sync_logs').update({
-                    status: 'completed', products_synced: 0,
-                    completed_at: new Date().toISOString(),
-                }).eq('id', logId);
-            }
-            return { success: true, updated: 0 };
+            await supabase.from('sync_logs').update({
+                status: 'completed', products_synced: 0,
+                details: { message: 'No open orders to track' },
+                completed_at: new Date().toISOString(),
+            }).eq('id', logId);
+            return { success: true, updated: 0, checked: 0 };
         }
 
         for (const order of orders) {
+            checked++;
             try {
-                // Get order details from CJ
-                const detailRes = await getOrderDetails(order.cj_order_id);
-                const cjOrder = detailRes.data;
+                const tracking = await fetchCjTrackingForOrder(order.cj_order_id);
 
-                const updateData = {};
+                // Only write to DB if something actually changed
+                const updateData = { tracking_updated_at: new Date().toISOString() };
 
-                if (cjOrder) {
-                    // Map CJ status to local status
-                    if (cjOrder.orderStatus) {
-                        updateData.status = mapCjStatus(cjOrder.orderStatus);
-                    }
-                    if (cjOrder.trackNumber) {
-                        updateData.tracking_number = cjOrder.trackNumber;
-                    }
-                }
+                if (tracking.status && tracking.status !== order.status)
+                    updateData.status = tracking.status;
+                if (tracking.trackingNumber && tracking.trackingNumber !== order.tracking_number)
+                    updateData.tracking_number = tracking.trackingNumber;
+                if (tracking.courier && tracking.courier !== order.courier)
+                    updateData.courier = tracking.courier;
 
-                // Also try tracking endpoint
-                try {
-                    const trackRes = await getTrackingInfo(order.cj_order_id);
-                    if (trackRes.data && trackRes.data.trackNumber) {
-                        updateData.tracking_number = trackRes.data.trackNumber;
-                    }
-                } catch (e) {
-                    // Tracking info may not be available yet
-                }
-
-                if (Object.keys(updateData).length > 0) {
-                    await supabase
-                        .from('orders')
-                        .update(updateData)
-                        .eq('id', order.id);
+                if (Object.keys(updateData).length > 1) {
+                    await supabase.from('orders').update(updateData).eq('id', order.id);
                     updated++;
                 }
             } catch (e) {
-                errors.push({ orderId: order.id, error: e.message });
+                errors.push({ orderId: order.id, orderNum: order.order_number, error: e.message });
             }
         }
 
-        if (logId) {
-            await supabase.from('sync_logs').update({
-                status: 'completed',
-                products_synced: updated,
-                details: { ordersChecked: orders.length, errors: errors.slice(0, 20) },
-                completed_at: new Date().toISOString(),
-            }).eq('id', logId);
-        }
+        await supabase.from('sync_logs').update({
+            status: 'completed',
+            products_synced: updated,
+            details: { checked, updated, errors: errors.slice(0, 20) },
+            completed_at: new Date().toISOString(),
+        }).eq('id', logId);
 
-        return { success: true, updated, errors: errors.length };
+        return { success: true, checked, updated, errors: errors.length };
     } catch (err) {
         if (logId) {
             await supabase.from('sync_logs').update({
@@ -351,12 +492,4 @@ export async function syncTracking() {
     }
 }
 
-function mapCjStatus(cjStatus) {
-    const s = (cjStatus || '').toLowerCase();
-    if (s.includes('pend')) return 'pending';
-    if (s.includes('process')) return 'processing';
-    if (s.includes('dispatch') || s.includes('ship')) return 'shipped';
-    if (s.includes('deliver') || s.includes('complet')) return 'delivered';
-    if (s.includes('cancel') || s.includes('close')) return 'cancelled';
-    return 'pending';
-}
+

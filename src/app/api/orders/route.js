@@ -44,20 +44,24 @@ export async function GET(request) {
 
         // Map to frontend format
         const list = (orders || []).map(o => ({
-            orderId: o.id,
-            orderNum: o.order_number,
-            cjOrderId: o.cj_order_id,
-            orderStatus: o.status,
-            trackNumber: o.tracking_number,
-            createDate: o.created_at,
+            orderId:      o.id,
+            orderNum:     o.order_number,
+            cjOrderId:    o.cj_order_id,
+            orderStatus:  o.status,
+            trackNumber:  o.tracking_number,
+            courier:      o.courier || o.cj_logistic,
+            createDate:   o.created_at,
+            lastUpdated:  o.tracking_updated_at,
             shippingName: o.shipping_name,
-            total: o.total,
+            total:        o.total,
+            cjError:      o.cj_error || null,
+            cjLogistic:   o.cj_logistic || null,
             productList: (o.order_items || []).map(item => ({
                 productNameEn: item.product_title,
-                productImage: item.image_url,
-                quantity: item.quantity,
-                unitPrice: item.unit_price,
-                variantName: item.variant_name,
+                productImage:  item.image_url,
+                quantity:      item.quantity,
+                unitPrice:     item.unit_price,
+                variantName:   item.variant_name,
             })),
         }));
 

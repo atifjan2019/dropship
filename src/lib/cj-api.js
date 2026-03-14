@@ -171,3 +171,57 @@ export async function getOrderDetails(orderId) {
 export async function getBalance() {
     return cjFetch('/shopping/pay/getBalance');
 }
+
+// ─── Logistics Helper ─────────────────────────────────────────
+
+/**
+ * Fetches available logistics for CN→US (or other) and returns the name
+ * of the cheapest option. Falls back to 'CJPacket Ordinary' if none available.
+ *
+ * @param {Array} products - [{vid, quantity}] or [{quantity, weight}]
+ * @param {string} fromCountry - origin country code (default 'CN')
+ * @param {string} toCountry   - destination country code (default 'US')
+ * @returns {Promise<string>} - logistic name string
+ */
+export async function getBestLogistic(products = [], fromCountry = 'CN', toCountry = 'US') {
+    try {
+        const payload = {
+            startCountryCode: fromCountry,
+            endCountryCode: toCountry,
+            products: products.map(p => ({
+                vid: p.vid || undefined,
+                quantity: p.quantity || 1,
+            })),
+        };
+        const res = await cjFetch('/logistic/freightCalculate', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+
+        const options = res.data;
+        if (!Array.isArray(options) || options.length === 0) {
+            return 'CJPacket Ordinary';
+        }
+
+        // Pick cheapest option
+        const sorted = options.sort((a, b) => (parseFloat(a.logisticPrice) || 0) - (parseFloat(b.logisticPrice) || 0));
+        return sorted[0].logisticName || 'CJPacket Ordinary';
+    } catch (err) {
+        return 'CJPacket Ordinary';
+    }
+}
+
+// Country code → full name map for common shipping destinations
+export const COUNTRY_NAMES = {
+    US: 'United States',
+    GB: 'United Kingdom',
+    CA: 'Canada',
+    AU: 'Australia',
+    DE: 'Germany',
+    FR: 'France',
+    IT: 'Italy',
+    ES: 'Spain',
+    NL: 'Netherlands',
+    JP: 'Japan',
+};
+
